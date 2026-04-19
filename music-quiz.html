@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Musikquiz</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --surface2: #0f3460;
+      --accent: #e94560;
+      --teal: #a8dadc;
+      --text: #eee;
+      --muted: #888;
+      --green: #4caf50;
+      --red: #e94560;
+    }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .screen { display: none; width: 100%; max-width: 480px; }
+    .screen.active { display: flex; flex-direction: column; align-items: center; }
+
+    /* ── MENU ── */
+    .menu-title {
+      font-size: 2.8rem;
+      font-weight: 900;
+      letter-spacing: 4px;
+      color: var(--accent);
+      margin-bottom: 0.3rem;
+    }
+    .menu-sub {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+    }
+    .genre-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      width: 100%;
+    }
+    .genre-card {
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 1.4rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: border-color 0.2s, transform 0.15s, opacity 0.2s;
+      user-select: none;
+    }
+    .genre-card:hover:not(.locked) { border-color: var(--accent); transform: translateY(-2px); }
+    .genre-card.locked { opacity: 0.4; cursor: not-allowed; }
+    .genre-emoji { font-size: 2.2rem; margin-bottom: 0.5rem; }
+    .genre-name { font-size: 1rem; font-weight: 700; }
+    .genre-lock { font-size: 1.1rem; margin-top: 0.3rem; color: var(--muted); }
+
+    /* ── QUIZ ── */
+    .quiz-header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.2rem;
+    }
+    .quiz-genre { font-size: 1rem; font-weight: 700; color: var(--teal); }
+    .quiz-progress { font-size: 0.9rem; color: var(--muted); }
+    .quiz-score { font-size: 0.95rem; font-weight: 700; color: var(--green); }
+
+    .progress-bar {
+      width: 100%;
+      height: 5px;
+      background: var(--surface2);
+      border-radius: 99px;
+      margin-bottom: 1.8rem;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 99px;
+      transition: width 0.3s;
+    }
+
+    /* waveform */
+    .waveform {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      height: 60px;
+      margin-bottom: 1.4rem;
+    }
+    .waveform .bar {
+      width: 5px;
+      border-radius: 99px;
+      background: var(--teal);
+      animation: wave 1s ease-in-out infinite;
+    }
+    .waveform.paused .bar { animation-play-state: paused; }
+    .waveform .bar:nth-child(1)  { height: 18px; animation-delay: 0.0s; }
+    .waveform .bar:nth-child(2)  { height: 34px; animation-delay: 0.1s; }
+    .waveform .bar:nth-child(3)  { height: 24px; animation-delay: 0.2s; }
+    .waveform .bar:nth-child(4)  { height: 44px; animation-delay: 0.3s; }
+    .waveform .bar:nth-child(5)  { height: 30px; animation-delay: 0.15s; }
+    .waveform .bar:nth-child(6)  { height: 50px; animation-delay: 0.05s; }
+    .waveform .bar:nth-child(7)  { height: 38px; animation-delay: 0.25s; }
+    .waveform .bar:nth-child(8)  { height: 28px; animation-delay: 0.35s; }
+    .waveform .bar:nth-child(9)  { height: 20px; animation-delay: 0.1s; }
+    .waveform .bar:nth-child(10) { height: 42px; animation-delay: 0.2s; }
+    .waveform .bar:nth-child(11) { height: 32px; animation-delay: 0.0s; }
+    .waveform .bar:nth-child(12) { height: 22px; animation-delay: 0.3s; }
+
+    @keyframes wave {
+      0%, 100% { transform: scaleY(1); }
+      50%       { transform: scaleY(0.35); }
+    }
+
+    .play-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 50px;
+      padding: 0.7rem 2rem;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-bottom: 1.6rem;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .play-btn:hover:not(:disabled) { opacity: 0.85; transform: scale(1.04); }
+    .play-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .question-text {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    .choices { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+
+    .choice-btn {
+      background: var(--surface);
+      border: 2px solid var(--surface2);
+      border-radius: 12px;
+      padding: 1rem 1.2rem;
+      text-align: left;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      font-size: 0.95rem;
+      color: var(--text);
+      line-height: 1.3;
+    }
+    .choice-btn:hover:not(:disabled) { border-color: var(--accent); background: var(--surface2); }
+    .choice-btn:disabled { cursor: default; }
+    .choice-btn .song-title { font-weight: 700; display: block; }
+    .choice-btn .artist { color: var(--muted); font-size: 0.85rem; }
+
+    .choice-btn.correct { border-color: var(--green); background: rgba(76,175,80,0.12); }
+    .choice-btn.wrong   { border-color: var(--red);   background: rgba(233,69,96,0.12); }
+
+    .next-btn {
+      margin-top: 1.4rem;
+      background: var(--surface2);
+      color: var(--teal);
+      border: 1px solid var(--teal);
+      border-radius: 8px;
+      padding: 0.65rem 2rem;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      display: none;
+    }
+    .next-btn.visible { display: block; }
+    .next-btn:hover { opacity: 0.8; }
+
+    /* ── ROUND END ── */
+    .round-end-icon { font-size: 4rem; margin-bottom: 0.8rem; }
+    .round-end-title { font-size: 1.8rem; font-weight: 900; margin-bottom: 0.4rem; }
+    .round-end-score { font-size: 3rem; font-weight: 900; color: var(--accent); margin: 0.5rem 0 1rem; }
+    .round-end-msg { color: var(--teal); font-size: 1rem; margin-bottom: 1.8rem; text-align: center; line-height: 1.5; }
+    .round-end-msg.fail { color: var(--muted); }
+
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.7rem 1.8rem;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-primary:hover { opacity: 0.85; }
+    .btn-secondary {
+      background: transparent;
+      color: var(--teal);
+      border: 1px solid var(--teal);
+      border-radius: 8px;
+      padding: 0.7rem 1.8rem;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-secondary:hover { opacity: 0.8; }
+
+    /* ── LOADING / ERROR ── */
+    .loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      color: var(--muted);
+    }
+    .loading.active { display: flex; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid var(--surface2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-box {
+      background: rgba(233,69,96,0.12);
+      border: 1px solid var(--accent);
+      border-radius: 10px;
+      padding: 1rem 1.4rem;
+      text-align: center;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .error-box.visible { display: block; }
+
+    @keyframes pop {
+      0%   { transform: scale(0.8); opacity: 0; }
+      60%  { transform: scale(1.08); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .pop { animation: pop 0.35s ease forwards; }
+  </style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading" id="loadingView">
+  <div class="spinner"></div>
+  <div>Lade Songs…</div>
+</div>
+
+<!-- MENU -->
+<div class="screen active" id="menuScreen">
+  <div class="menu-title">MUSIKQUIZ</div>
+  <div class="menu-sub">Erkenne den Song in 5 Sekunden</div>
+  <div class="error-box" id="menuError"></div>
+  <div class="genre-grid" id="genreGrid"></div>
+</div>
+
+<!-- QUIZ -->
+<div class="screen" id="quizScreen">
+  <div class="quiz-header">
+    <div class="quiz-genre" id="qGenre"></div>
+    <div class="quiz-progress" id="qProgress"></div>
+    <div class="quiz-score" id="qScore"></div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
+  <div class="waveform paused" id="waveform">
+    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+  </div>
+
+  <button class="play-btn" id="playBtn">▶ Abspielen</button>
+  <div class="question-text">Welcher Song ist das?</div>
+
+  <div class="choices" id="choices"></div>
+  <button class="next-btn" id="nextBtn">Weiter →</button>
+</div>
+
+<!-- ROUND END -->
+<div class="screen" id="roundEndScreen">
+  <div class="round-end-icon" id="endIcon"></div>
+  <div class="round-end-title" id="endTitle"></div>
+  <div class="round-end-score" id="endScore"></div>
+  <div class="round-end-msg" id="endMsg"></div>
+  <div class="btn-row" id="endBtns"></div>
+</div>
+
+<script>
+const GENRES = [
+  { id: 14, name: 'Pop',              emoji: '🎵', term: 'pop hits' },
+  { id: 21, name: 'Rock',             emoji: '🎸', term: 'rock' },
+  { id: 18, name: 'Hip-Hop / Rap',   emoji: '🎤', term: 'hip hop rap' },
+  { id: 7,  name: 'Electronic',       emoji: '🎧', term: 'electronic dance' },
+];
+
+const PASS_SCORE = 8;
+const QUESTIONS  = 10;
+const PREVIEW_S  = 5;
+const LS_KEY     = 'mqUnlocked';
+
+// ── State ──────────────────────────────────────────────────────────────
+let state = {
+  unlocked: loadUnlocked(),
+  genre: null,
+  pool: [],      // alle gefetchten Songs der Runde
+  songs: [],     // 10 ausgewählte Songs
+  currentIndex: 0,
+  score: 0,
+  answered: false,
+  choices: [],
+};
+
+let audio = null;
+let audioPlaying = false;
+
+// ── Persistence ────────────────────────────────────────────────────────
+function loadUnlocked() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || [14]; }
+  catch { return [14]; }
+}
+function saveUnlocked() {
+  localStorage.setItem(LS_KEY, JSON.stringify(state.unlocked));
+}
+
+// ── Screens ────────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── Menu ───────────────────────────────────────────────────────────────
+function renderMenu() {
+  showScreen('menuScreen');
+  document.getElementById('menuError').classList.remove('visible');
+  const grid = document.getElementById('genreGrid');
+  grid.innerHTML = '';
+  GENRES.forEach(g => {
+    const locked = !state.unlocked.includes(g.id);
+    const card = document.createElement('div');
+    card.className = 'genre-card' + (locked ? ' locked' : '');
+    card.innerHTML = `
+      <div class="genre-emoji">${g.emoji}</div>
+      <div class="genre-name">${g.name}</div>
+      ${locked ? '<div class="genre-lock">🔒</div>' : ''}
+    `;
+    if (!locked) card.addEventListener('click', () => startRound(g));
+    grid.appendChild(card);
+  });
+}
+
+// ── Fetch Songs ────────────────────────────────────────────────────────
+async function fetchSongs(genre) {
+  const url = `https://itunes.apple.com/search?media=music&genreId=${genre.id}&term=${encodeURIComponent(genre.term)}&limit=80&country=de`;
+  const res  = await fetch(url);
+  if (!res.ok) throw new Error('iTunes API nicht erreichbar');
+  const data = await res.json();
+  return data.results.filter(s => s.previewUrl && s.trackName && s.artistName);
+}
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// ── Start Round ────────────────────────────────────────────────────────
+async function startRound(genre) {
+  stopAudio();
+  state.genre = genre;
+  state.currentIndex = 0;
+  state.score = 0;
+  state.answered = false;
+
+  showLoading(true);
+
+  try {
+    const all = await fetchSongs(genre);
+    if (all.length < 15) throw new Error('Zu wenige Songs mit Vorschau verfügbar.');
+    state.pool  = all;
+    state.songs = shuffle(all).slice(0, QUESTIONS);
+    showLoading(false);
+    showQuestion();
+  } catch (e) {
+    showLoading(false);
+    showMenuError(e.message || 'Fehler beim Laden der Songs.');
+  }
+}
+
+function showLoading(on) {
+  document.getElementById('loadingView').classList.toggle('active', on);
+  document.getElementById('menuScreen').classList.toggle('active', !on);
+  if (on) document.getElementById('quizScreen').classList.remove('active');
+}
+
+function showMenuError(msg) {
+  renderMenu();
+  const el = document.getElementById('menuError');
+  el.textContent = '⚠ ' + msg;
+  el.classList.add('visible');
+}
+
+// ── Question ───────────────────────────────────────────────────────────
+function showQuestion() {
+  stopAudio();
+  state.answered = false;
+  showScreen('quizScreen');
+
+  const song = state.songs[state.currentIndex];
+
+  // header
+  document.getElementById('qGenre').textContent = state.genre.emoji + ' ' + state.genre.name;
+  document.getElementById('qProgress').textContent = `Frage ${state.currentIndex + 1} / ${QUESTIONS}`;
+  document.getElementById('qScore').textContent = `✓ ${state.score}`;
+  document.getElementById('progressFill').style.width = `${(state.currentIndex / QUESTIONS) * 100}%`;
+
+  // waveform
+  document.getElementById('waveform').classList.add('paused');
+
+  // play button
+  const playBtn = document.getElementById('playBtn');
+  playBtn.disabled = false;
+  playBtn.textContent = '▶ Abspielen';
+
+  // build choices: correct + 2 distractors
+  const others = shuffle(state.pool.filter(s => s.trackId !== song.trackId)).slice(0, 2);
+  state.choices = shuffle([song, ...others]);
+
+  const choicesEl = document.getElementById('choices');
+  choicesEl.innerHTML = '';
+  state.choices.forEach((c, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    btn.innerHTML = `<span class="song-title">${escHtml(c.trackName)}</span><span class="artist">${escHtml(c.artistName)}</span>`;
+    btn.addEventListener('click', () => handleAnswer(i, song));
+    choicesEl.appendChild(btn);
+  });
+
+  document.getElementById('nextBtn').classList.remove('visible');
+
+  // auto-play
+  playPreview(song);
+}
+
+function playPreview(song) {
+  stopAudio();
+  audio = new Audio(song.previewUrl);
+  audio.volume = 0.85;
+
+  const playBtn = document.getElementById('playBtn');
+  const waveform = document.getElementById('waveform');
+
+  audio.addEventListener('play', () => {
+    audioPlaying = true;
+    playBtn.disabled = true;
+    playBtn.textContent = '♪ Spielt…';
+    waveform.classList.remove('paused');
+  });
+
+  audio.addEventListener('timeupdate', () => {
+    if (audio.currentTime >= PREVIEW_S) {
+      stopAudio();
+      playBtn.disabled = state.answered;
+      playBtn.textContent = '▶ Nochmal hören';
+    }
+  });
+
+  audio.addEventListener('ended', () => {
+    stopAudio();
+    playBtn.disabled = state.answered;
+    playBtn.textContent = '▶ Nochmal hören';
+  });
+
+  audio.addEventListener('error', () => {
+    stopAudio();
+    playBtn.disabled = state.answered;
+    playBtn.textContent = '▶ Nochmal hören';
+  });
+
+  audio.play().catch(() => {
+    playBtn.disabled = false;
+    playBtn.textContent = '▶ Abspielen';
+    waveform.classList.add('paused');
+  });
+
+  document.getElementById('playBtn').onclick = () => playPreview(song);
+}
+
+function stopAudio() {
+  if (audio) {
+    audio.pause();
+    audio.src = '';
+    audio = null;
+  }
+  audioPlaying = false;
+  document.getElementById('waveform').classList.add('paused');
+}
+
+// ── Answer ─────────────────────────────────────────────────────────────
+function handleAnswer(choiceIdx, correctSong) {
+  if (state.answered) return;
+  state.answered = true;
+  stopAudio();
+
+  const chosen   = state.choices[choiceIdx];
+  const isCorrect = chosen.trackId === correctSong.trackId;
+  if (isCorrect) state.score++;
+
+  // disable all, mark correct/wrong
+  const btns = document.querySelectorAll('.choice-btn');
+  btns.forEach((btn, i) => {
+    btn.disabled = true;
+    if (state.choices[i].trackId === correctSong.trackId) btn.classList.add('correct');
+    else if (i === choiceIdx) btn.classList.add('wrong');
+  });
+
+  document.getElementById('qScore').textContent = `✓ ${state.score}`;
+  document.getElementById('playBtn').disabled = true;
+  document.getElementById('nextBtn').classList.add('visible');
+
+  document.getElementById('nextBtn').onclick = () => {
+    state.currentIndex++;
+    if (state.currentIndex >= QUESTIONS) showRoundEnd();
+    else showQuestion();
+  };
+}
+
+// ── Round End ──────────────────────────────────────────────────────────
+function showRoundEnd() {
+  stopAudio();
+  showScreen('roundEndScreen');
+
+  const passed = state.score >= PASS_SCORE;
+
+  document.getElementById('endIcon').textContent  = passed ? '🏆' : '😅';
+  document.getElementById('endTitle').textContent = passed ? 'Runde bestanden!' : 'Knapp nicht!';
+  document.getElementById('endScore').textContent = `${state.score} / ${QUESTIONS}`;
+
+  const msgEl = document.getElementById('endMsg');
+  const btnsEl = document.getElementById('endBtns');
+  btnsEl.innerHTML = '';
+
+  if (passed) {
+    // unlock next genre
+    const idx = GENRES.findIndex(g => g.id === state.genre.id);
+    if (idx >= 0 && idx < GENRES.length - 1) {
+      const nextGenre = GENRES[idx + 1];
+      if (!state.unlocked.includes(nextGenre.id)) {
+        state.unlocked.push(nextGenre.id);
+        saveUnlocked();
+        msgEl.textContent = `${nextGenre.emoji} "${nextGenre.name}" wurde freigeschaltet!`;
+        msgEl.className = 'round-end-msg';
+      } else {
+        msgEl.textContent = 'Gut gemacht! Wähle ein weiteres Genre.';
+        msgEl.className = 'round-end-msg';
+      }
+    } else if (idx === GENRES.length - 1) {
+      msgEl.textContent = '🎉 Du hast alle Genres abgeschlossen! Ein echtes Musikgenie!';
+      msgEl.className = 'round-end-msg';
+    }
+
+    addBtn(btnsEl, 'Menü', 'btn-primary', renderMenu);
+    addBtn(btnsEl, 'Nochmal', 'btn-secondary', () => startRound(state.genre));
+  } else {
+    msgEl.textContent = `Du brauchst ${PASS_SCORE} von ${QUESTIONS} richtige Antworten, um das nächste Genre freizuschalten. Versuch es nochmal!`;
+    msgEl.className = 'round-end-msg fail';
+    addBtn(btnsEl, 'Nochmal', 'btn-primary', () => startRound(state.genre));
+    addBtn(btnsEl, 'Menü', 'btn-secondary', renderMenu);
+  }
+}
+
+function addBtn(parent, label, cls, fn) {
+  const b = document.createElement('button');
+  b.className = cls;
+  b.textContent = label;
+  b.addEventListener('click', fn);
+  parent.appendChild(b);
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ───────────────────────────────────────────────────────────────
+renderMenu();
+</script>
+</body>
+</html>
